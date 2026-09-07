@@ -170,21 +170,31 @@ def main():
         print("找不到 app.asar。用 --asar 指定，例如：python install.py --asar D:\\tool\\AI\\Zcode\\resources\\app.asar")
         return 1
     print(f"[目标] {asar}")
+    if not args.dev:
+        copy_runtime(args.dry_run)      # 先建数据目录并复制运行时
+        prepare_config(args.dry_run)
     if not args.dry_run:
         pi.set_target(asar)
         if not args.dev:
-            pi.set_runtime(DATA_DIR)   # 注入行指向数据目录副本
-
-    if not args.dev:
-        copy_runtime(args.dry_run)
-        prepare_config(args.dry_run)
+            pi.set_runtime(DATA_DIR)    # 注入行指向数据目录副本（此时目录已存在）
     if args.dry_run:
         print("[注入] （dry-run）python patch_install.py install")
         ok = True
     else:
         ok = pi.install()
-        if ok and not args.dev:
-            remember_asar(asar, args.dry_run)   # 记住安装位置，卸载/检查免 --asar
+        if not args.dev:
+            remember_asar(asar, args.dry_run)   # 无论是否收尾成功都记住安装位置（finalize/卸载要用）
+        if not ok and pi.TMP.exists():
+            # 运行中替换失败：弹独立监控窗口，等 ZCode 退出后自动收尾
+            import subprocess as _sp
+            try:
+                _sp.Popen([sys.executable, "-m", "finalize_watch", "--asar", str(asar)],
+                          cwd=str(HERE), creationflags=_sp.CREATE_NEW_CONSOLE)
+                print("\n已弹出「安装收尾监控」窗口：**完全退出 ZCode** 后它会自动完成替换，"
+                      "之后重新启动 ZCode 即生效（无需其它操作，别关那个监控窗口）。")
+            except OSError as e:
+                print(f"\n监控窗口启动失败（{e}）：请完全退出 ZCode 后手动执行 "
+                      f"python patch_install.py install --finalize")
     print("\n全部完成。重启 ZCode，窗口右下角出现 🌳 按钮；点击打开任务树面板，"
           "按项目查看任务分叉，点节点可查看与切换。")
     return 0 if ok else 1

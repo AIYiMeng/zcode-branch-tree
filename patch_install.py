@@ -108,14 +108,25 @@ def _ensure_target():
 
 
 def client_running():
+    """tasklist 为主（快），输出异常时用 PowerShell 计数兜底（个别环境 tasklist 返回空）。"""
     try:
-        out = subprocess.run(
+        r = subprocess.run(
             ["tasklist", "/FI", "IMAGENAME eq ZCode.exe"],
             capture_output=True, text=True, encoding="gbk", errors="replace", shell=False,
-        ).stdout
-        return "ZCode.exe" in out
+        )
+        if r.returncode == 0 and r.stdout is not None:
+            return "ZCode.exe" in r.stdout
     except Exception:
-        return True  # 查不到时按在跑处理，走安全路径
+        pass
+    try:
+        out = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-Command",
+             "@(Get-Process ZCode -ErrorAction SilentlyContinue).Count"],
+            capture_output=True, text=True, timeout=15, shell=False,
+        ).stdout.strip()
+        return bool(out) and out != "0"
+    except Exception:
+        return True  # 两种检测都失败：按在跑处理，走安全路径
 
 
 # ---------- asar 读写（机制借自 zcode-token-usage-statusbar，MIT） ----------
@@ -229,6 +240,15 @@ def install(finalize=False):
     """返回 True=已安装/已指向当前目录，False=失败或待收尾。"""
     _ensure_target()
     assert LOADER.exists(), f"loader 缺失：{LOADER}"
+    if finalize and TMP.exists():
+        # 快路径：.tmp 是上次自检通过的完整包，客户端退出后直接替换即可（免再重打包）
+        print("发现待替换 TMP：", TMP)
+        print("结构自检：")
+        if self_check(TMP):
+            os.replace(TMP, ASAR)
+            print("收尾完成。启动 ZCode，窗口右下角出现 🌳 按钮。")
+            return True
+        print("TMP 自检未通过，丢弃并走完整安装流程…")
     entry = entry_bytes_of(ASAR)
     stripped = BTREE_LINE_RE.sub(b"", entry)   # 只剥离本工具的旧注入行
     if stripped + INJECT_LINE.encode() == entry:
@@ -256,7 +276,11 @@ def install(finalize=False):
         except OSError as e:
             print(f"\n运行中替换失败（{e}）。请完全退出 ZCode 后执行：python patch_install.py install --finalize")
             return False
-    os.replace(TMP, ASAR)
+    try:
+        os.replace(TMP, ASAR)
+    except OSError as e:
+        print(f"\n替换失败（{e}）。请完全退出 ZCode 后执行：python patch_install.py install --finalize")
+        return False
     print("完成。启动 ZCode，窗口右下角出现 🌳 按钮。")
     return True
 
@@ -304,22 +328,30 @@ def _cli():
         description="zcode-branch-tree asar 注入/卸载工具（默认目标 D:\\ZCode；非默认安装位置用 --asar 指定）")
     ap.add_argument("cmd", nargs="?", default="check", choices=["install", "remove", "check"],
                     help="install=安装/重定向, remove=卸载, check=查看状态")
-    ap.add_argument("--asar", help="app.asar 完整路径（形如 <安装目录>/resources/app.asar）")
-    ap.add_argument("--runtime", help="运行时目录（含 inject-branchtree.cjs/overlay.js；默认本目录）")
+    ap.add_argument("--asar", help="app.asar 完整路径（形如 <安装目录>/resources/app.asar；缺省读数据目录记住的路径）")
+    ap.add_argument("--runtime", help="运行时目录（含 inject-branchtree.cjs/overlay.js；缺省优先数据目录）")
     ap.add_argument("--finalize", action="store_true", help="install 专用：客户端退出后完成 .tmp 替换")
     a = ap.parse_args()
+    cfg = Path.home() / ".zcode" / "zcode-branch-tree" / "config.json"
+    remembered = None
+    try:
+        remembered = json.loads(cfg.read_text(encoding="utf-8")).get("asar_path")
+    except (OSError, ValueError):
+        pass
     try:
         if a.asar:
             set_target(a.asar)
-        elif ASAR is None:
-            set_target(ASAR_DEFAULT)
+        else:
+            p = (Path(remembered) if remembered else ASAR_DEFAULT)
+            set_target(p)
         if a.runtime:
             set_runtime(a.runtime)
-        elif RUNTIME is None:
-            set_runtime(HERE)
+        else:
+            dd = Path.home() / ".zcode" / "zcode-branch-tree"
+            set_runtime(dd if (dd / "inject-branchtree.cjs").is_file() else HERE)
     except ValueError as e:
         print(f"目标路径无效：{e}")
-        print('请用 --asar 指定，例如：python patch_install.py {} --asar "D:\\tool\\AI\\Zcode\\resources\\app.asar"'.format(a.cmd))
+        print('请用 --asar 指定，例如：python patch_install.py {} --asar "<ZCode安装目录>\\resources\\app.asar"'.format(a.cmd))
         return 2
     if a.cmd == "install":
         ok = install(finalize=a.finalize)
