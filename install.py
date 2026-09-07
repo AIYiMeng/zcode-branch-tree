@@ -142,6 +142,25 @@ def remember_asar(asar, dry):
         cfg.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+def write_finish_bat(dry):
+    """在数据目录生成个性化收尾脚本：内置本机 Python 与仓库绝对路径，
+    双击即可完成收尾（cmd 的 PATH 里没有 python 也能用）。CRLF 行尾。"""
+    bat = DATA_DIR / "收尾-双击我.bat"
+    lines = [
+        "@echo off",
+        "chcp 65001 >nul",
+        f'cd /d "{HERE}"',
+        f'"{sys.executable}" -m patch_install install --finalize',
+        "echo.",
+        "echo 收尾完成后即可启动 ZCode（窗口右下角 🌳）。",
+        "pause",
+    ]
+    print(f"[收尾脚本] {bat}（已内置本机 Python 路径，双击即用）")
+    if not dry:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        bat.write_text("\r\n".join(lines) + "\r\n", encoding="utf-8")
+
+
 def main():
     ap = argparse.ArgumentParser(description="zcode-branch-tree 一键安装")
     ap.add_argument("--asar", help="app.asar 路径（默认自动探测）")
@@ -173,6 +192,7 @@ def main():
     if not args.dev:
         copy_runtime(args.dry_run)      # 先建数据目录并复制运行时
         prepare_config(args.dry_run)
+        write_finish_bat(args.dry_run)
     if not args.dry_run:
         pi.set_target(asar)
         if not args.dev:

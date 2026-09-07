@@ -110,6 +110,8 @@ ZCode 官方升级会覆盖 `app.asar`，悬浮条消失时重跑一次 `python 
 | 现象 | 处理 |
 |---|---|
 | 重启后没有 🌳 按钮 | `python patch_install.py check` 看注入状态；多半是 ZCode 升级覆盖了 asar，重跑 `python install.py` |
+| 双击收尾脚本提示 "'python' 不是内部或外部命令" | cmd 的 PATH 里没有 Python。用数据目录里由 install.py 生成的「收尾-双击我.bat」（`~/.zcode/zcode-branch-tree/`，已内置本机 Python 绝对路径）；或在 PowerShell 里 `py -3 -m patch_install install --finalize` |
+| 完全退出后收尾仍提示"ZCode 正在运行" | 后台服务进程未退尽：任务管理器结束所有 ZCode 进程（本项目已内置 PowerShell 兜底检测，正常不会误报） |
 | 面板显示"读取失败" | 确认 `~/.zcode/cli/db/db.sqlite` 存在；看 ZCode 主进程日志中 `[btree]` 前缀输出 |
 | 切换落到了 resume 命令 | 目标任务未在桌面端打开且未渲染在任务列表里，属预期兜底 |
 | 任务树缺少很老的任务 | 默认取最近 500 个未归档任务，改数据目录 `config.json` 的 `max_sessions` 后等一次刷新 |
