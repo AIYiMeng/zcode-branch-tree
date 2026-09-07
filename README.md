@@ -33,7 +33,7 @@
 前置条件：Windows；[Python 3.8+](https://www.python.org/)（仅安装器与查询层使用，零第三方依赖）；git 在 PATH。
 
 ```bash
-git clone https://github.com/<你的用户名>/zcode-branch-tree.git
+git clone https://github.com/AIYiMeng/zcode-branch-tree.git
 cd zcode-branch-tree
 python install.py
 ```
