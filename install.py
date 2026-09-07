@@ -21,6 +21,7 @@ app.asar 后也需要重跑一次。
 """
 import argparse
 import json
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -31,9 +32,9 @@ HERE = Path(__file__).parent.resolve()
 DATA_DIR = Path.home() / ".zcode" / "zcode-branch-tree"
 RUNTIME_FILES = ("inject-branchtree.cjs", "overlay.js", "taskq.py")
 
-# ZCode 安装位置候选：resources/app.asar 存在即命中（按序探测）
+# ZCode 安装位置候选：resources/app.asar 存在即命中（按序探测）。
+# 非默认位置用环境变量 ZCODE_ASAR 或 --asar 指定；安装成功后路径会记住在数据目录。
 ASAR_CANDIDATES = [
-    r"D:\tool\AI\Zcode\resources\app.asar",
     r"D:\ZCode\resources\app.asar",
     r"C:\ZCode\resources\app.asar",
     r"%LOCALAPPDATA%\Programs\ZCode\resources\app.asar",
@@ -44,11 +45,15 @@ ASAR_CANDIDATES = [
 
 
 def expand(p):
-    import os
     return Path(os.path.expandvars(os.path.expanduser(p)))
 
 
 def find_asar():
+    env = os.environ.get("ZCODE_ASAR")   # 非默认安装位置：设一次环境变量即可
+    if env:
+        p = expand(env)
+        if p.is_file():
+            return p
     for c in ASAR_CANDIDATES:
         p = expand(c)
         if p.is_file():
@@ -108,6 +113,35 @@ def remove_data_dir(dry):
     return True
 
 
+def find_installed_asar(explicit):
+    """卸载/检查时定位 asar：显式参数 > 数据目录 config 记住的安装路径 > 候选探测 > 询问。"""
+    if explicit:
+        return Path(explicit)
+    cfg = DATA_DIR / "config.json"
+    try:
+        p = json.loads(cfg.read_text(encoding="utf-8")).get("asar_path")
+        if p and Path(p).is_file():
+            return Path(p)
+    except (OSError, ValueError):
+        pass
+    return find_asar() or ask_asar()
+
+
+def remember_asar(asar, dry):
+    """把安装位置写进数据目录 config.json（loader 忽略未知字段），卸载时免 --asar。"""
+    cfg = DATA_DIR / "config.json"
+    try:
+        data = json.loads(cfg.read_text(encoding="utf-8")) if cfg.exists() else {}
+    except (OSError, ValueError):
+        data = {}
+    if data.get("asar_path") == str(asar):
+        return
+    data["asar_path"] = str(asar)
+    if not dry:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        cfg.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
 def main():
     ap = argparse.ArgumentParser(description="zcode-branch-tree 一键安装")
     ap.add_argument("--asar", help="app.asar 路径（默认自动探测）")
@@ -120,7 +154,13 @@ def main():
         if args.dry_run:
             print("[卸载] （dry-run）python patch_install.py remove + 删除数据目录")
             return 0
-        ok = pi.remove()
+        asar = find_installed_asar(args.asar)
+        ok = True
+        if asar and asar.is_file():
+            pi.set_target(asar)
+            ok = pi.remove()
+        else:
+            print("[卸载] 未找到 app.asar（ZCode 可能已卸载），跳过 asar 恢复，仅清理数据。")
         remove_data_dir(args.dry_run)
         print("卸载完成。" if ok else "卸载未完成（见上方提示）。")
         return 0 if ok else 1
@@ -143,6 +183,8 @@ def main():
         ok = True
     else:
         ok = pi.install()
+        if ok and not args.dev:
+            remember_asar(asar, args.dry_run)   # 记住安装位置，卸载/检查免 --asar
     print("\n全部完成。重启 ZCode，窗口右下角出现 🌳 按钮；点击打开任务树面板，"
           "按项目查看任务分叉，点节点可查看与切换。")
     return 0 if ok else 1

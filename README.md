@@ -38,11 +38,14 @@ cd zcode-branch-tree
 python install.py
 ```
 
-`install.py` 会自动完成：探测 ZCode 安装位置 → 复制运行时到 `~/.zcode/zcode-branch-tree/` → 生成 config.json → 备份并注入 app.asar → 自检 → 原子替换。**ZCode 无需退出，安装完成后重启 ZCode 生效**，窗口右下角出现 🌳 按钮。
+`install.py` 会自动完成：探测 ZCode 安装位置（默认候选目录 → 找不到时询问，或用
+`--asar` / 环境变量 `ZCODE_ASAR` 指定）→ 复制运行时到 `~/.zcode/zcode-branch-tree/`
+→ 生成 config.json → 备份并注入 app.asar → 自检 → 原子替换。**ZCode 无需退出，
+安装完成后重启 ZCode 生效**，窗口右下角出现 🌳 按钮。
 
-- 探测不到安装位置时：`python install.py --asar "D:\你的路径\ZCode\resources\app.asar"`
+- 指定安装位置：`python install.py --asar "<ZCode安装目录>\resources\app.asar"`
 - 只想看看会做什么：`python install.py --dry-run`
-- 二次确认注入状态：`python patch_install.py check`
+- 二次确认注入状态：`python patch_install.py check`（非默认位置加 `--asar`）
 
 > 与 [zcode-token-usage-statusbar](https://github.com/xhwxt/zcode-token-usage-statusbar) 使用不同的注入标记（`inject-branchtree.cjs` vs `inject-main.cjs`），**两者可以共存**，互不影响、各自卸载。
 
@@ -58,32 +61,39 @@ python install.py
 
 注入的本质是修改 ZCode 安装目录里的 `app.asar`（修改前已自动备份）。三种力度任选：
 
+> **路径说明**：ZCode 装在默认位置 `D:\ZCode` 时，下面的命令直接可用；装在其它位置时，
+> 给命令加一个 `--asar` 参数指向你的 app.asar，例如
+> `--asar "E:\Apps\ZCode\resources\app.asar"`。也可以设一次环境变量 `ZCODE_ASAR`
+> 指向它，一劳永逸。另外**安装成功后本工具会记住安装位置**，之后的卸载/更新一般无需再传。
+
 ### ① 完整卸载（推荐：恢复客户端 + 清理全部数据）
 
 先**完全退出 ZCode**（托盘图标也要退出），然后：
 
 ```bash
 cd zcode-branch-tree
-python install.py --remove
+python install.py --remove          # 非默认位置：--asar "<ZCode安装目录>\resources\app.asar"
 ```
 
-它会：从备份 `app.asar.btree.bak` 恢复原版 asar → 删除数据目录 `~/.zcode/zcode-branch-tree/`（运行时、配置、舍弃标注）。之后启动 ZCode 即回到未安装状态。
+它会：定位 ZCode（记住的安装路径 → 自动探测 → 环境变量 → 都失败则提示 `--asar`）→
+从备份 `app.asar.btree.bak` 恢复原版 asar → 删除数据目录 `~/.zcode/zcode-branch-tree/`
+（运行时、配置、舍弃标注）。即使找不到 app.asar（如 ZCode 已卸载），数据清理也会完成。
 
 ### ② 只关闭注入（保留配置和舍弃标注，随时可再启用）
 
 适合暂时不想用、但以后还会开的情况：
 
 ```bash
-python patch_install.py remove     # 恢复原版 asar（需先退出 ZCode）
-python patch_install.py check      # 确认显示"未注入"
+python patch_install.py remove      # 恢复原版 asar（需先退出 ZCode；非默认位置加 --asar）
+python patch_install.py check       # 确认显示"未注入"
 ```
 
-之后想重新启用：`python patch_install.py install`（运行时和配置都还在，无需重跑 install.py）。
+之后再启用：`python install.py`（自动识别安装位置，注入行不变时秒级完成，推荐）。
 
 ### ③ 手动恢复（极端情况兜底）
 
 - 备份文件在 ZCode 安装目录：`resources\app.asar.btree.bak`。手动恢复 = 退出 ZCode 后，把它改名回 `app.asar`（覆盖现有文件）。
-- 若安装时 ZCode 正在运行导致替换挂起，目录里会出现 `app.asar.btree.tmp`：退出 ZCode 后执行 `python patch_install.py install --finalize` 完成收尾（或直接删掉 .tmp 用备份恢复）。
+- 若安装时 ZCode 正在运行导致替换挂起，目录里会出现 `app.asar.btree.tmp`：退出 ZCode 后执行 `python patch_install.py install --finalize`（非默认位置加 `--asar`）完成收尾，或直接删掉 .tmp 用备份恢复。
 - 卸载不会动 ZCode 的任何任务数据（本工具对任务库**只读**）。
 
 ## 更新

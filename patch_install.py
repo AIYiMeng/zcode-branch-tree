@@ -298,9 +298,38 @@ def check():
         print("存在待替换 TMP:", TMP, "（退出 ZCode 后跑 install --finalize）")
 
 
+def _cli():
+    import argparse
+    ap = argparse.ArgumentParser(
+        description="zcode-branch-tree asar 注入/卸载工具（默认目标 D:\\ZCode；非默认安装位置用 --asar 指定）")
+    ap.add_argument("cmd", nargs="?", default="check", choices=["install", "remove", "check"],
+                    help="install=安装/重定向, remove=卸载, check=查看状态")
+    ap.add_argument("--asar", help="app.asar 完整路径（形如 <安装目录>/resources/app.asar）")
+    ap.add_argument("--runtime", help="运行时目录（含 inject-branchtree.cjs/overlay.js；默认本目录）")
+    ap.add_argument("--finalize", action="store_true", help="install 专用：客户端退出后完成 .tmp 替换")
+    a = ap.parse_args()
+    try:
+        if a.asar:
+            set_target(a.asar)
+        elif ASAR is None:
+            set_target(ASAR_DEFAULT)
+        if a.runtime:
+            set_runtime(a.runtime)
+        elif RUNTIME is None:
+            set_runtime(HERE)
+    except ValueError as e:
+        print(f"目标路径无效：{e}")
+        print('请用 --asar 指定，例如：python patch_install.py {} --asar "D:\\tool\\AI\\Zcode\\resources\\app.asar"'.format(a.cmd))
+        return 2
+    if a.cmd == "install":
+        ok = install(finalize=a.finalize)
+        return 0 if ok else 1
+    if a.cmd == "remove":
+        ok = remove()
+        return 0 if ok else 1
+    check()
+    return 0
+
+
 if __name__ == "__main__":
-    _ensure_target()
-    if len(sys.argv) > 2 and sys.argv[2] == "--finalize":
-        {"install": lambda: install(finalize=True)}.get(sys.argv[1], check)()
-    else:
-        {"install": install, "remove": remove, "check": check}.get(sys.argv[1], check)()
+    sys.exit(_cli())
