@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>任务树 demo</title>
+<style>
+  body { margin: 0; height: 100vh; background: #f1f5f9; font-family: system-ui, sans-serif; }
+  #demo-note { padding: 10px 14px; font-size: 12px; color: #475569; }
+  /* 模拟客户端任务列表元素（验证 DOM 点击切换路径用） */
+  #fake-sidebar { position: fixed; left: 12px; top: 60px; width: 240px; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 8px; font-size: 12px; }
+  #fake-sidebar .cap { color: #94a3b8; margin-bottom: 6px; }
+  #fake-sidebar li { list-style: none; padding: 6px 8px; border-radius: 8px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #fake-sidebar li:hover { background: #f1f5f9; }
+</style>
+</head>
+<body>
+<div id="demo-note">浏览器演示页：模拟 ZCode 窗口（数据来自 fixture.js，切换为模拟应答）。🌳 按钮在右下角，面板已自动打开。</div>
+<div id="fake-sidebar">
+  <div class="cap">模拟的客户端任务列表（点切换会走这里）</div>
+  <ul id="fake-list"></ul>
+</div>
+<script src="fixture.js"></script>
+<script src="../overlay.js"></script>
+<script>
+/* 假 loader：模拟 inject-branchtree.cjs 的 RPC 收割与应答 */
+(function () {
+  var F = window.__BTREE_FIXTURE;
+  if (!F) { document.getElementById("demo-note").textContent = "缺少 fixture.js（先跑 python tools/gen_fixture.py）"; return; }
+  /* 模拟窗口/状态：最新任务视为"运行中"，挑一个分叉任务作为"本窗口"（展示谱系高亮） */
+  var fork = F.sessions.filter(function (s) { return s.tt === "fork"; })[0] || F.sessions[0];
+  var mine = fork.id;
+  F.sessions.forEach(function (s) { if (s.id !== mine && Math.random() < 0.15) s.st = "running"; });
+  if (fork.st !== "running") { var newest = F.sessions[0]; if (newest) newest.st = "running"; }
+  var openIds = {};
+  F.sessions.slice(0, 5).forEach(function (s) { openIds[s.id] = [101]; });
+  var marks = {};
+  var marked = F.sessions.filter(function (s) { return s.tt === "fork"; })[2];
+  if (marked) marks[marked.id] = true;   /* 预置一个"舍弃"示例 */
+  try { localStorage.setItem("btree.lastProj", fork.proj); } catch (e) { /* 忽略 */ }
+  /* 渲染模拟任务列表（前 12 个，带 data-task-item-key 供 DOM 切换路径命中） */
+  var ul = document.getElementById("fake-list");
+  F.sessions.slice(0, 12).forEach(function (s) {
+    var li = document.createElement("li");
+    li.setAttribute("data-task-item-key", "ws1:" + s.id);
+    li.setAttribute("data-testid", "task-item-" + s.id);
+    li.textContent = s.title;
+    li.addEventListener("click", function () { li.style.background = "#dbeafe"; setTimeout(function(){li.style.background="";}, 800); });
+    ul.appendChild(li);
+  });
+  setInterval(function () {
+    var q = window.__btreeReqs;
+    if (!q || !q.length) return;
+    var reqs = q.splice(0, q.length);
+    reqs.forEach(function (r) {
+      var res;
+      if (r.op === "tree") {
+        res = { ok: true, data: { projects: F.projects, sessions: F.sessions, truncated: F.truncated, mine: mine, windows: openIds, marks: marks } };
+      } else if (r.op === "focus") {
+        var hit = !!openIds[r.arg.sid] && r.arg.sid !== mine;
+        res = { ok: true, data: { focused: hit } };
+      } else if (r.op === "mark") {
+        if (r.arg.on) marks[r.arg.sid] = true; else delete marks[r.arg.sid];
+        res = { ok: true, data: { discarded: !!r.arg.on } };
+      } else {
+        res = { ok: false, error: "demo 不支持该操作" };
+      }
+      setTimeout(function () { window.__btreeResult(Object.assign({ id: r.id }, res)); }, 60);
+    });
+  }, 250);
+  setTimeout(function () {
+    var b = document.getElementById("btree-btn");
+    if (b) b.click();
+  }, 300);
+})();
+</script>
+</body>
+</html>

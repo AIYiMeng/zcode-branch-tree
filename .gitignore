@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+demo/fixture.json
+demo/fixture.js
+demo/shot*.png
+.entry-check.js
+config.json
+marks.json
+.mimosa/

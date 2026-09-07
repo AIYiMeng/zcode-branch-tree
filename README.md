@@ -1,0 +1,139 @@
+# zcode-branch-tree · ZCode 任务树
+
+给 [ZCode](https://zcode.ai) 桌面客户端（Electron 应用）加一个悬浮 🌳 按钮和**思维导图式的任务树面板**：按项目查看全部任务，主线一条线、`fork` 分叉画出岔道；当前任务的**谱系**自动高亮（最初任务 → … → 当前 → 分出的分支）；每个节点带**状态**（运行中 / 未读 / 已读 / 舍弃）与**摘要**（分支时的语句）；点节点查看详情并一键**切换任务**。
+
+![任务树面板（合成演示数据）](docs/hero.png)
+
+> 上图为 demo 页合成数据截图；真实使用时显示的是你本机的任务。数据**全程只读、不联网**。
+
+平台：Windows ｜ 许可：[MIT](LICENSE)
+
+## 功能
+
+- **项目 → 任务基因树**：泳道布局（布局算法为纯函数，带单元测试），一个项目一条主线，`fork` 分叉画出岔道；悬停任意节点显示 标题 / 类型 / 状态 / **任务第一句**。
+- **谱系高亮**：本窗口当前任务自动成为焦点——从**最初任务**（「最初」胶囊）沿链到当前（虚线环），连同它分出的所有分支一起亮显，其余无关任务淡显。
+- **节点状态**（真实数据源，见「数据与隐私」）：
+
+  | 标记 | 含义 | 来源 |
+  |---|---|---|
+  | ▶ 运行中（绿） | 任务正在执行 | 客户端任务索引 `task_status = running` |
+  | ◐ 未读（橙） | 有未读动静 | 客户端任务索引 `unread_at` |
+  | 无标记 | 已读 | 默认态 |
+  | ● 开着（蓝） | 正在某窗口打开 | 主进程窗口-任务映射 |
+  | 📌 | 已置顶 | 客户端任务索引 |
+  | ✗ 舍弃（灰+删除线） | **你手动标注的舍弃** | 本工具 `marks.json`，面板一键标记/取消 |
+
+- **节点详情**：任务第一句（分叉任务显示「分支时的语句」，主线任务显示「任务最初的输入」）、最初 → … → 本任务的谱系面包屑（可点击跳转）、分出的分支列表、轮数 / 请求数 / tokens、代码 +新增/-删除 行数。
+- **切换任务**（三层兜底）：① 任务已在某窗口打开 → 直接聚焦该窗口；② 点击客户端自身任务列表里的对应元素，走它自己的切换逻辑；③ 展示并复制 `zcode --resume <任务id>` 终端命令。
+- **实时刷新**：监听任务库目录（事件驱动，无轮询），任务有新动静面板自动更新；空闲时零开销。
+- 开发友好：`overlay.js` / `taskq.py` 改动后约 2 秒热更新生效（语法校验通过才注入）。
+
+## 安装
+
+前置条件：Windows；[Python 3.8+](https://www.python.org/)（仅安装器与查询层使用，零第三方依赖）；git 在 PATH。
+
+```bash
+git clone https://github.com/<你的用户名>/zcode-branch-tree.git
+cd zcode-branch-tree
+python install.py
+```
+
+`install.py` 会自动完成：探测 ZCode 安装位置 → 复制运行时到 `~/.zcode/zcode-branch-tree/` → 生成 config.json → 备份并注入 app.asar → 自检 → 原子替换。**ZCode 无需退出，安装完成后重启 ZCode 生效**，窗口右下角出现 🌳 按钮。
+
+- 探测不到安装位置时：`python install.py --asar "D:\你的路径\ZCode\resources\app.asar"`
+- 只想看看会做什么：`python install.py --dry-run`
+- 二次确认注入状态：`python patch_install.py check`
+
+> 与 [zcode-token-usage-statusbar](https://github.com/xhwxt/zcode-token-usage-statusbar) 使用不同的注入标记（`inject-branchtree.cjs` vs `inject-main.cjs`），**两者可以共存**，互不影响、各自卸载。
+
+## 使用
+
+1. 点右下角 🌳 打开面板（ESC 或 ✕ 关闭）。
+2. 顶部下拉框切换项目；状态行显示项目目录、任务数、分叉数、本窗口当前任务。
+3. 树中每个节点是一个任务：**亮色 = 当前任务谱系**，淡显 = 无关任务；胶囊含义见上表；悬停看摘要。
+4. 点节点打开右侧详情：谱系面包屑、分支语句、用量与代码统计。
+5. **切换到此任务**：一键走三层兜底；**标记为舍弃** / **取消舍弃**：自定义状态；**复制 resume 命令**：终端里继续该任务。
+
+## 卸载与关闭注入（重要）
+
+注入的本质是修改 ZCode 安装目录里的 `app.asar`（修改前已自动备份）。三种力度任选：
+
+### ① 完整卸载（推荐：恢复客户端 + 清理全部数据）
+
+先**完全退出 ZCode**（托盘图标也要退出），然后：
+
+```bash
+cd zcode-branch-tree
+python install.py --remove
+```
+
+它会：从备份 `app.asar.btree.bak` 恢复原版 asar → 删除数据目录 `~/.zcode/zcode-branch-tree/`（运行时、配置、舍弃标注）。之后启动 ZCode 即回到未安装状态。
+
+### ② 只关闭注入（保留配置和舍弃标注，随时可再启用）
+
+适合暂时不想用、但以后还会开的情况：
+
+```bash
+python patch_install.py remove     # 恢复原版 asar（需先退出 ZCode）
+python patch_install.py check      # 确认显示"未注入"
+```
+
+之后想重新启用：`python patch_install.py install`（运行时和配置都还在，无需重跑 install.py）。
+
+### ③ 手动恢复（极端情况兜底）
+
+- 备份文件在 ZCode 安装目录：`resources\app.asar.btree.bak`。手动恢复 = 退出 ZCode 后，把它改名回 `app.asar`（覆盖现有文件）。
+- 若安装时 ZCode 正在运行导致替换挂起，目录里会出现 `app.asar.btree.tmp`：退出 ZCode 后执行 `python patch_install.py install --finalize` 完成收尾（或直接删掉 .tmp 用备份恢复）。
+- 卸载不会动 ZCode 的任何任务数据（本工具对任务库**只读**）。
+
+## 更新
+
+```bash
+git pull
+python install.py        # 注入行不变时秒级完成；改了 loader 才需要重启 ZCode
+```
+
+ZCode 官方升级会覆盖 `app.asar`，悬浮条消失时重跑一次 `python install.py` 即可。
+
+## 常见问题
+
+| 现象 | 处理 |
+|---|---|
+| 重启后没有 🌳 按钮 | `python patch_install.py check` 看注入状态；多半是 ZCode 升级覆盖了 asar，重跑 `python install.py` |
+| 面板显示"读取失败" | 确认 `~/.zcode/cli/db/db.sqlite` 存在；看 ZCode 主进程日志中 `[btree]` 前缀输出 |
+| 切换落到了 resume 命令 | 目标任务未在桌面端打开且未渲染在任务列表里，属预期兜底 |
+| 任务树缺少很老的任务 | 默认取最近 500 个未归档任务，改数据目录 `config.json` 的 `max_sessions` 后等一次刷新 |
+
+## 工作原理
+
+```
+app.asar 入口尾部 +1 行 dynamic import（备份 → 重打包 → 自检 → 原子替换）
+  └─ inject-branchtree.cjs（主进程 loader）
+       ├─ 向每个窗口注入 overlay.js（悬浮按钮 + 任务树面板）
+       ├─ RPC：收割页面请求队列 → 执行 → 回推（tree / focus / mark / ping）
+       ├─ 常驻 python：taskq.py serve（只读任务库，行协议；异常自动回退一次性查询）
+       ├─ 每窗口活跃任务：复用客户端自带 IPC 通道维护 窗口 → 会话 映射
+       └─ fs.watch 任务库目录 → 面板节流自动刷新
+```
+
+**数据与隐私**：只读本机 `~/.zcode/cli/db/db.sqlite`（session / model_usage / turn_usage）与 `~/.zcode/v2/tasks-index.sqlite`（客户端任务索引）；**全程不联网、不写任何 ZCode 数据**；唯一写入的是本工具数据目录（运行时副本 / config.json / marks.json 舍弃标注）与安装期的 asar 备份。RPC 操作白名单，任务 id 走字符校验。
+
+## 开发
+
+```bash
+node test/layout.test.js              # 布局算法单测
+python taskq.py dump                  # 直接查看任务数据（JSON）
+python tools/gen_fixture.py           # 用真实任务库生成 demo fixture（本地预览用）
+python tools/gen_demo_fixture.py      # 生成合成数据 fixture（截图/公开演示用）
+# 浏览器打开 demo/demo.html           # 无需 ZCode 的界面演示
+python install.py --dev               # 开发模式：注入直指仓库，热更新即改即达
+```
+
+## 致谢
+
+- [xhwxt/zcode-token-usage-statusbar](https://github.com/xhwxt/zcode-token-usage-statusbar)（MIT）：asar 重打包/自检机制、常驻 python 行协议、db 目录监听、每窗口活跃任务 IPC 等模式的来源；本项目的注入标记与其独立、可共存。
+- 任务数据模型来自 ZCode 客户端本地的公开结构（session 表 `parent_id` / `project_id` / `task_type`）。
+
+## License
+
+[MIT](LICENSE)
