@@ -47,6 +47,13 @@ python install.py
 - 只想看看会做什么：`python install.py --dry-run`
 - 二次确认注入状态：`python patch_install.py check`（非默认位置加 `--asar`）
 
+**安装时 ZCode 正在运行也没关系**：最后一步替换若被运行中的客户端锁住，会自动弹出
+「安装收尾监控」窗口——之后**完全退出 ZCode** 即可（托盘右键退出；只关窗口不行，
+后台服务会留在内存里，必要时用任务管理器结束全部 ZCode 进程），监控窗口会自动完成
+替换。若关掉了监控窗口，可双击仓库里的 `手动收尾.bat`，或双击安装时生成在数据目录的
+`收尾-双击我.bat`（`~/.zcode/zcode-branch-tree/`，已内置本机 Python 绝对路径，
+不依赖 PATH）。收尾后再启动 ZCode 即生效。
+
 > 与 [zcode-token-usage-statusbar](https://github.com/xhwxt/zcode-token-usage-statusbar) 使用不同的注入标记（`inject-branchtree.cjs` vs `inject-main.cjs`），**两者可以共存**，互不影响、各自卸载。
 
 ## 使用
@@ -93,7 +100,7 @@ python patch_install.py check       # 确认显示"未注入"
 ### ③ 手动恢复（极端情况兜底）
 
 - 备份文件在 ZCode 安装目录：`resources\app.asar.btree.bak`。手动恢复 = 退出 ZCode 后，把它改名回 `app.asar`（覆盖现有文件）。
-- 若安装时 ZCode 正在运行导致替换挂起，目录里会出现 `app.asar.btree.tmp`：退出 ZCode 后执行 `python patch_install.py install --finalize`（非默认位置加 `--asar`）完成收尾，或直接删掉 .tmp 用备份恢复。
+- 若安装时 ZCode 正在运行导致替换挂起，目录里会出现 `app.asar.btree.tmp`：完全退出 ZCode 后，最省事的是双击 `手动收尾.bat`（或数据目录的 `收尾-双击我.bat`）；或命令行执行 `python patch_install.py install --finalize`（非默认位置加 `--asar`）；都不要就删掉 .tmp 用备份恢复。
 - 卸载不会动 ZCode 的任何任务数据（本工具对任务库**只读**）。
 
 ## 更新
@@ -104,6 +111,8 @@ python install.py        # 注入行不变时秒级完成；改了 loader 才需
 ```
 
 ZCode 官方升级会覆盖 `app.asar`，悬浮条消失时重跑一次 `python install.py` 即可。
+更新/重装时若 ZCode 正在运行，同样走上面的「收尾监控 / 手动收尾」流程（注入行不变时
+只是同步 overlay 副本，无需动 asar，也就不需要收尾）。
 
 ## 常见问题
 
@@ -140,6 +149,21 @@ python tools/gen_demo_fixture.py      # 生成合成数据 fixture（截图/公�
 # 浏览器打开 demo/demo.html           # 无需 ZCode 的界面演示
 python install.py --dev               # 开发模式：注入直指仓库，热更新即改即达
 ```
+
+| 文件 | 作用 |
+|---|---|
+| `install.py` | 一键安装/卸载（复制运行时 → 注入 asar → 记住路径 → 生成个性化收尾脚本） |
+| `patch_install.py` | asar 注入/卸载底层（备份→重打包→自检→原子替换；支持 `--asar`/`--runtime`/`--finalize`） |
+| `inject-branchtree.cjs` | 主进程 loader：注入 + RPC + 常驻查询 + db 监听 + 每窗口活跃任务 + 窗口聚焦 |
+| `taskq.py` | 任务查询层（只读双库：会话谱系/用量 + 客户端任务索引状态；serve/dump） |
+| `overlay.js` | 悬浮按钮 + 任务树面板（paint() 布局、谱系高亮、状态标记、三层切换） |
+| `finalize_watch.py` | 安装收尾监控（等客户端完全退出后自动完成 .tmp 替换） |
+| `手动收尾.bat` | 手动收尾脚本（python → py 双兜底；数据目录另生成个性化版「收尾-双击我.bat」） |
+| `tools/gen_fixture.py` | 从真实任务库生成演示/测试数据（本地用，不入库） |
+| `tools/gen_demo_fixture.py` | 生成合成数据 fixture（README 截图/公开演示，不含真实任务） |
+| `tools/asar_grep.py` `tools/asar_ctx.py` | 客户端 bundle 只读检索（逆向定位 IPC 通道/界面结构，支持 `ZCODE_ASAR` 环境变量） |
+| `demo/` | 浏览器演示页（合成数据渲染 + 模拟任务列表验证 DOM 切换） |
+| `test/` | 布局单测（paint() 不变量）+ Python 语法检查 |
 
 ## 致谢
 
